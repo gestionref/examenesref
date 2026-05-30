@@ -114,6 +114,7 @@ td{padding:10px 12px;border-bottom:1px solid var(--border)}
       <button class="tab active" onclick="switchTab('tab-examenes',this)">Exámenes</button>
       <button class="tab" onclick="switchTab('tab-banco',this)">Ver preguntas</button>
       <button class="tab" onclick="switchTab('tab-resultados',this)">Resultados</button>
+      <button class="tab" onclick="switchTab('tab-reportes',this)">Reportes</button>
     </div>
 
     <div id="tab-examenes" class="tab-content active">
@@ -159,6 +160,16 @@ td{padding:10px 12px;border-bottom:1px solid var(--border)}
     <div id="tab-resultados" class="tab-content">
       <div id="resultados-container"><div class="loading"><div class="spinner"></div>Cargando resultados...</div></div>
     </div>
+    <div id="tab-reportes" class="tab-content">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h3 style="font-size:16px;font-weight:600;margin:0">Preguntas reportadas</h3>
+          <span id="reportes-count" style="font-size:12px;color:var(--text-hint)"></span>
+        </div>
+        <div id="reportes-list"></div>
+      </div>
+    </div>
+
     <div id="tab-resultados-detalle" class="tab-content" style="display:none">
       <div class="nav-row" style="margin-bottom:1rem">
         <button class="btn btn-sm" onclick="volverAResultados()">← Volver</button>
@@ -379,6 +390,7 @@ function switchTab(id, el) {
   el.classList.add('active');
   if (id==='tab-resultados') cargarResultados();
   if (id==='tab-banco') renderListaPreguntas();
+  if (id==='tab-reportes') renderReportes();
 }
 
 function adminLogin() {
@@ -640,9 +652,13 @@ async function terminarExamen() {
       return `<div class="q-item" style="margin-bottom:.75rem">
         <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
           <div style="flex:1">
+            <p style="font-size:11px;color:var(--text-hint);font-family:'DM Mono',monospace;margin-bottom:4px">Pregunta ${d.pregunta.id}</p>
             <p style="font-size:13px;font-weight:600;line-height:1.5;margin-bottom:6px">${d.pregunta.enunciado}</p>
             ${opcionesHTML}
-            ${d.pregunta.referencia ? `<div style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 10px;background:var(--info-bg);border:1px solid #b8d4f0;border-radius:6px"><span style="font-size:11px;font-weight:700;color:var(--info)">📖 Ref.</span><span style="font-size:12px;color:var(--info);font-family:'DM Mono',monospace">${d.pregunta.referencia}</span></div>` : ''}
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+              ${d.pregunta.referencia ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--info-bg);border:1px solid #b8d4f0;border-radius:6px"><span style="font-size:11px;font-weight:700;color:var(--info)">📖 Ref.</span><span style="font-size:12px;color:var(--info);font-family:'DM Mono',monospace">${d.pregunta.referencia}</span></div>` : ''}
+              ${state.currentExamen.esEntrenamiento ? `<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--danger);color:var(--danger)" onclick="reportarPregunta('${d.pregunta.id}')">⚠ Reportar error</button>` : ''}
+            </div>
           </div>
           <div style="text-align:center;min-width:48px;flex-shrink:0;padding:6px 8px;background:${fc==='var(--success)'?'var(--success-bg)':fc==='var(--warning)'?'var(--warning-bg)':'var(--danger-bg)'};border-radius:8px;margin-left:4px">
             <div style="font-size:18px;font-weight:700;color:${fc}">${d.saldo}</div>
@@ -1107,6 +1123,7 @@ async function cargarCorreccion(codigo) {
       return `<div class="q-item" style="margin-bottom:.75rem">
         <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
           <div style="flex:1">
+            <p style="font-size:11px;color:var(--text-hint);font-family:'DM Mono',monospace;margin-bottom:4px">Pregunta ${d.pregunta.id}</p>
             <p style="font-size:13px;font-weight:600;line-height:1.5;margin-bottom:6px">${d.pregunta.enunciado}</p>
             ${opcionesHTML(d.pregunta, d.respuestas)}
             ${d.pregunta.referencia ? `<div style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 10px;background:var(--info-bg);border:1px solid #b8d4f0;border-radius:6px"><span style="font-size:11px;font-weight:700;color:var(--info)">📖 Ref.</span><span style="font-size:12px;color:var(--info);font-family:'DM Mono',monospace">${d.pregunta.referencia}</span></div>` : ''}
@@ -1213,6 +1230,92 @@ function tiempoEmpleadoTexto() {
   const codigo = params.get('correccion');
   if (codigo) cargarCorreccion(codigo);
 })();
+
+// ── REPORTES DE PREGUNTAS ─────────────────────────────────
+function getReportes() {
+  try { return JSON.parse(localStorage.getItem('fecobal_reportes') || '[]'); }
+  catch(e) { return []; }
+}
+function saveReportes(r) { localStorage.setItem('fecobal_reportes', JSON.stringify(r)); }
+
+function reportarPregunta(pregId) {
+  const motivo = prompt('¿Cuál es el error que encontraste en la pregunta ' + pregId + '?\n\nDescribí brevemente el problema:');
+  if (!motivo || !motivo.trim()) return;
+  const reportes = getReportes();
+  reportes.push({
+    id: Date.now(),
+    preguntaId: pregId,
+    motivo: motivo.trim(),
+    arbitro: state.currentExamen ? (state.currentExamen.arbitroNombre || 'Anónimo') : 'Anónimo',
+    fecha: new Date().toLocaleDateString('es-AR'),
+    hora: new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}),
+    estado: 'pendiente'
+  });
+  saveReportes(reportes);
+  alert('✅ Reporte enviado. Gracias por ayudarnos a mejorar las preguntas.');
+}
+
+function renderReportes() {
+  const reportes = getReportes();
+  const container = document.getElementById('reportes-list');
+  const counter = document.getElementById('reportes-count');
+  const pendientes = reportes.filter(r => r.estado === 'pendiente');
+  counter.textContent = pendientes.length + ' pendiente' + (pendientes.length !== 1 ? 's' : '');
+
+  if (reportes.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-hint)">No hay reportes</div>';
+    return;
+  }
+
+  const banco = getBanco(idiomaActual);
+  container.innerHTML = reportes.sort((a,b) => b.id - a.id).map(r => {
+    const preg = banco.find(p => p.id === r.preguntaId);
+    const bgEstado = r.estado === 'pendiente' ? 'var(--warning-bg)' : r.estado === 'corregida' ? 'var(--success-bg)' : 'var(--info-bg)';
+    const colEstado = r.estado === 'pendiente' ? 'var(--warning)' : r.estado === 'corregida' ? 'var(--success)' : 'var(--info)';
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--primary)">Pregunta ${r.preguntaId}</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:${bgEstado};color:${colEstado};font-weight:600">${r.estado.toUpperCase()}</span>
+        <span style="font-size:11px;color:var(--text-hint);margin-left:auto">${r.fecha} ${r.hora} — ${r.arbitro}</span>
+      </div>
+      ${preg ? `<p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;line-height:1.4">${preg.enunciado.substring(0,120)}${preg.enunciado.length > 120 ? '...' : ''}</p>` : ''}
+      <p style="font-size:13px;margin-bottom:10px;line-height:1.4"><strong>Motivo:</strong> ${r.motivo}</p>
+      <div style="display:flex;gap:6px">
+        ${r.estado === 'pendiente' ? `
+          <button class="btn btn-sm" style="font-size:11px;background:var(--success);color:white" onclick="resolverReporte(${r.id},'confirmada')">✓ Confirmar como está</button>
+          <button class="btn btn-sm" style="font-size:11px;background:var(--primary);color:white" onclick="editarPreguntaDesdeReporte('${r.preguntaId}',${r.id})">✏ Editar pregunta</button>
+          <button class="btn btn-sm" style="font-size:11px;background:var(--danger);color:white" onclick="resolverReporte(${r.id},'corregida')">✓ Marcar corregida</button>
+        ` : `
+          <button class="btn btn-sm" style="font-size:11px" onclick="eliminarReporte(${r.id})">🗑 Eliminar</button>
+        `}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function resolverReporte(id, estado) {
+  const reportes = getReportes();
+  const r = reportes.find(r => r.id === id);
+  if (r) { r.estado = estado; saveReportes(reportes); renderReportes(); }
+}
+
+function eliminarReporte(id) {
+  if (!confirm('¿Eliminar este reporte?')) return;
+  const reportes = getReportes().filter(r => r.id !== id);
+  saveReportes(reportes);
+  renderReportes();
+}
+
+function editarPreguntaDesdeReporte(pregId, reporteId) {
+  const banco = getBanco(idiomaActual);
+  const idx = banco.findIndex(p => p.id === pregId);
+  if (idx >= 0) {
+    editarPregunta(idx);
+  } else {
+    alert('Pregunta no encontrada en el banco actual');
+  }
+}
+
 </script>
 </body>
 </html>

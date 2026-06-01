@@ -1126,7 +1126,10 @@ async function cargarCorreccion(codigo) {
             <p style="font-size:11px;color:var(--text-hint);font-family:'DM Mono',monospace;margin-bottom:4px">Pregunta ${d.pregunta.id}</p>
             <p style="font-size:13px;font-weight:600;line-height:1.5;margin-bottom:6px">${d.pregunta.enunciado}</p>
             ${opcionesHTML(d.pregunta, d.respuestas)}
-            ${d.pregunta.referencia ? `<div style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 10px;background:var(--info-bg);border:1px solid #b8d4f0;border-radius:6px"><span style="font-size:11px;font-weight:700;color:var(--info)">📖 Ref.</span><span style="font-size:12px;color:var(--info);font-family:'DM Mono',monospace">${d.pregunta.referencia}</span></div>` : ''}
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+              ${d.pregunta.referencia ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--info-bg);border:1px solid #b8d4f0;border-radius:6px"><span style="font-size:11px;font-weight:700;color:var(--info)">📖 Ref.</span><span style="font-size:12px;color:var(--info);font-family:'DM Mono',monospace">${d.pregunta.referencia}</span></div>` : ''}
+              <button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--danger);color:var(--danger)" onclick="reportarPregunta('${d.pregunta.id}','oficial','${c.arbitro}','${c.examen}','${c.codigo||''}')">⚠ Reportar error</button>
+            </div>
           </div>
           <div style="text-align:center;min-width:48px;flex-shrink:0;padding:6px 8px;background:${pct>=100?'var(--success-bg)':pct>0?'var(--warning-bg)':'var(--danger-bg)'};border-radius:8px;margin-left:4px">
             <div style="font-size:18px;font-weight:700;color:${fc}">${d.saldo}</div>
@@ -1238,7 +1241,7 @@ function getReportes() {
 }
 function saveReportes(r) { localStorage.setItem('fecobal_reportes', JSON.stringify(r)); }
 
-function reportarPregunta(pregId) {
+function reportarPregunta(pregId, tipo, arbitro, examen, codigo) {
   const motivo = prompt('¿Cuál es el error que encontraste en la pregunta ' + pregId + '?\n\nDescribí brevemente el problema:');
   if (!motivo || !motivo.trim()) return;
   const reportes = getReportes();
@@ -1246,10 +1249,13 @@ function reportarPregunta(pregId) {
     id: Date.now(),
     preguntaId: pregId,
     motivo: motivo.trim(),
-    arbitro: state.currentExamen ? (state.currentExamen.arbitroNombre || 'Anónimo') : 'Anónimo',
+    arbitro: arbitro || (state.currentExamen ? (state.currentExamen.arbitroNombre || 'Anónimo') : 'Anónimo'),
     fecha: new Date().toLocaleDateString('es-AR'),
     hora: new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}),
-    estado: 'pendiente'
+    estado: 'pendiente',
+    tipo: tipo || 'entrenamiento',
+    examen: examen || '',
+    codigo: codigo || ''
   });
   saveReportes(reportes);
   alert('✅ Reporte enviado. Gracias por ayudarnos a mejorar las preguntas.');
@@ -1272,19 +1278,23 @@ function renderReportes() {
     const preg = banco.find(p => p.id === r.preguntaId);
     const bgEstado = r.estado === 'pendiente' ? 'var(--warning-bg)' : r.estado === 'corregida' ? 'var(--success-bg)' : 'var(--info-bg)';
     const colEstado = r.estado === 'pendiente' ? 'var(--warning)' : r.estado === 'corregida' ? 'var(--success)' : 'var(--info)';
+    const esOficial = r.tipo === 'oficial';
     return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--primary)">Pregunta ${r.preguntaId}</span>
         <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:${bgEstado};color:${colEstado};font-weight:600">${r.estado.toUpperCase()}</span>
+        <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${esOficial?'var(--danger-bg)':'var(--info-bg)'};color:${esOficial?'var(--danger)':'var(--info)'};font-weight:600">${esOficial?'OFICIAL':'ENTRENAMIENTO'}</span>
         <span style="font-size:11px;color:var(--text-hint);margin-left:auto">${r.fecha} ${r.hora} — ${r.arbitro}</span>
       </div>
+      ${esOficial ? `<p style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Examen: <strong>${r.examen}</strong></p>` : ''}
       ${preg ? `<p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;line-height:1.4">${preg.enunciado.substring(0,120)}${preg.enunciado.length > 120 ? '...' : ''}</p>` : ''}
       <p style="font-size:13px;margin-bottom:10px;line-height:1.4"><strong>Motivo:</strong> ${r.motivo}</p>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${r.estado === 'pendiente' ? `
           <button class="btn btn-sm" style="font-size:11px;background:var(--success);color:white" onclick="resolverReporte(${r.id},'confirmada')">✓ Confirmar como está</button>
           <button class="btn btn-sm" style="font-size:11px;background:var(--primary);color:white" onclick="editarPreguntaDesdeReporte('${r.preguntaId}',${r.id})">✏ Editar pregunta</button>
           <button class="btn btn-sm" style="font-size:11px;background:var(--danger);color:white" onclick="resolverReporte(${r.id},'corregida')">✓ Marcar corregida</button>
+          ${esOficial && r.codigo ? `<button class="btn btn-sm" style="font-size:11px;background:var(--warning);color:#333" onclick="window.open(SHEETS_URL+'?tipo=correccion&codigo='+encodeURIComponent('${r.codigo}'),'_blank')">📋 Ver resultado</button>` : ''}
         ` : `
           <button class="btn btn-sm" style="font-size:11px" onclick="eliminarReporte(${r.id})">🗑 Eliminar</button>
         `}

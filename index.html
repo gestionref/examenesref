@@ -870,12 +870,23 @@ function renderBancoPersonalizado() {
         ${items.map(p=>{
           const sel = seleccionPersonalizada.has(p.id);
           const nC = p.opciones.filter(o=>o.correcta).length;
-          return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);cursor:pointer;background:${sel?'var(--bg)':'transparent'};margin-bottom:4px;border:1px solid ${sel?'var(--border-strong)':'transparent'}" onclick="toggleSeleccion('${p.id}')">
-            <input type="checkbox" ${sel?'checked':''} style="width:15px;height:15px;accent-color:var(--text);flex-shrink:0;margin-top:2px;pointer-events:none"/>
-            <code style="font-size:11px;color:var(--text-hint);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;flex-shrink:0;margin-top:1px">${p.id}</code>
-            <div style="flex:1;min-width:0">
-              <p style="font-size:13px;font-weight:500;margin-bottom:3px;line-height:1.5">${p.enunciado.length>110?p.enunciado.slice(0,110)+'…':p.enunciado}</p>
-              <span style="font-size:12px;color:var(--text-hint)">${nC} correcta${nC!==1?'s':''}</span>
+          const exp = state.pregExpandidas && state.pregExpandidas.has(p.id);
+          const opcsHTML = exp ? '<div style="margin-top:8px;padding-left:4px">'+p.opciones.map(o=>
+            '<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 8px;margin-bottom:3px;border-radius:4px;background:'+(o.correcta?'var(--success-bg)':'transparent')+';border:1px solid '+(o.correcta?'#b8e6c8':'var(--border)')+'">'
+            +'<span style="font-size:11px;font-weight:700;color:'+(o.correcta?'var(--success)':'var(--text-hint)')+'">'+o.letra+')</span>'
+            +'<span style="font-size:12px;color:'+(o.correcta?'var(--success)':'var(--text-muted)')+'">'+o.texto+'</span>'
+            +(o.correcta?'<span style="margin-left:auto;font-size:10px;color:var(--success);font-weight:700">✓</span>':'')
+            +'</div>'
+          ).join('')+(p.referencia?'<div style="margin-top:6px;font-size:11px;color:var(--info)">📖 Ref. '+p.referencia+'</div>':'')+'</div>' : '';
+          return `<div style="border-radius:var(--radius-sm);margin-bottom:4px;border:1px solid ${sel?'var(--border-strong)':'var(--border)'};background:${sel?'var(--bg)':'transparent'};overflow:hidden">
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;cursor:pointer">
+              <input type="checkbox" ${sel?'checked':''} style="width:15px;height:15px;accent-color:var(--text);flex-shrink:0;margin-top:2px;cursor:pointer" onclick="event.stopPropagation();toggleSeleccion('${p.id}')"/>
+              <code style="font-size:11px;color:var(--text-hint);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;flex-shrink:0;margin-top:1px">${p.id}</code>
+              <div style="flex:1;min-width:0" onclick="togglePregExpandida('${p.id}')">
+                <p style="font-size:13px;font-weight:500;margin-bottom:3px;line-height:1.5">${exp?p.enunciado:(p.enunciado.length>110?p.enunciado.slice(0,110)+'…':p.enunciado)}</p>
+                <span style="font-size:12px;color:var(--text-hint)">${nC} correcta${nC!==1?'s':''} · ${p.opciones.length} opciones ${exp?'▲':'▼'}</span>
+                ${opcsHTML}
+              </div>
             </div>
           </div>`;
         }).join('')}
@@ -905,6 +916,13 @@ function deseleccionarTodasRegla(regla) {
 function toggleSeleccion(id) {
   if (seleccionPersonalizada.has(id)) seleccionPersonalizada.delete(id);
   else seleccionPersonalizada.add(id);
+  renderBancoPersonalizado();
+}
+
+function togglePregExpandida(id) {
+  if (!state.pregExpandidas) state.pregExpandidas = new Set();
+  if (state.pregExpandidas.has(id)) state.pregExpandidas.delete(id);
+  else state.pregExpandidas.add(id);
   renderBancoPersonalizado();
 }
 

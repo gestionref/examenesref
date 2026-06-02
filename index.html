@@ -253,7 +253,7 @@ td{padding:10px 12px;border-bottom:1px solid var(--border)}
 
   <!-- EXAMEN -->
   <div id="screen-admin-examen-personalizado" class="screen">
-    <div class="nav-row"><button class="btn btn-sm" onclick="showScreen('admin')">← Volver</button><span class="nav-title">Crear examen personalizado</span></div>
+    <div class="nav-row"><button class="btn btn-sm" onclick="state.editandoExamenId=null;showScreen('admin')">← Volver</button><span class="nav-title" id="ep-title">Crear examen personalizado</span></div>
     <div class="card">
       <div class="sec-title">Datos del examen</div>
       <div style="margin-bottom:14px">
@@ -288,7 +288,7 @@ td{padding:10px 12px;border-bottom:1px solid var(--border)}
           <label style="font-size:13px;color:var(--text-muted);margin:0">Tomar aleatoriamente:</label>
           <input type="number" id="ep-qty" value="20" min="1" style="width:70px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:14px;font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--text)"/>
           <span style="font-size:13px;color:var(--text-muted)">preguntas</span>
-          <button class="btn btn-primary" onclick="guardarExamenPersonalizado()">Guardar examen</button>
+          <button class="btn btn-primary" onclick="guardarExamenPersonalizado()" id="ep-save-btn">Guardar examen</button>
           <span id="ep-msg"></span>
         </div>
       </div>
@@ -457,9 +457,15 @@ async function crearExamen() {
   try { await sheetsPost({tipo:'guardar_examen', examen}); } catch(ex) { console.error('Error guardando:', ex); }
   document.getElementById('exam-name').value='';document.getElementById('exam-regla').value='';document.getElementById('exam-tiempo').value='';
   // Show locally first, then sync
-  state.examenes.push(examen);
+  if (isEdit) {
+    const idx = state.examenes.findIndex(e => e.id === state.editandoExamenId);
+    if (idx >= 0) state.examenes[idx] = examen;
+    state.editandoExamenId = null;
+  } else {
+    state.examenes.push(examen);
+  }
   renderListaExamenes();
-  msg.textContent='Examen creado y sincronizado ✓';msg.className='msg-ok';
+  msg.textContent=(isEdit?'Examen actualizado':'Examen creado')+' y sincronizado ✓';msg.className='msg-ok';
   setTimeout(()=>msg.textContent='',3000);
   await cargarExamenes(true);
 }
@@ -474,6 +480,7 @@ function renderListaExamenes() {
         <p style="font-size:13px;color:var(--text-muted)">${e.qty} preguntas · mínimo ${e.minimo}%${e.reglaFiltro?' · regla '+e.reglaFiltro:''}${(Number(e.tiempoMin)>0)?' · ⏱ '+Number(e.tiempoMin)+' min':' · Sin límite de tiempo'} · ${e.idioma==='en'?'🇬🇧 English':'🇦🇷 Español'}</p>
       </div>
       <span class="badge ${e.activo?'badge-success':'badge-info'}">${e.activo?'Activo':'Desactivado'}</span>
+      <button class="btn btn-sm" style="background:var(--primary);color:white" onclick="editarExamen(${i})">✏ Editar</button>
       <button class="btn btn-sm" onclick="toggleExamen(${i})">${e.activo?'Desactivar':'Activar'}</button>
       <button class="btn btn-sm btn-danger" onclick="eliminarExamen(${i})">✕</button>
     </div>`).join('');
@@ -489,6 +496,68 @@ async function eliminarExamen(i) {
   if(!confirm('¿Eliminar este examen?')) return;
   await sheetsPost({tipo:'eliminar_examen', id:state.examenes[i].id});
   await cargarExamenes(true);
+}
+
+function editarExamen(i) {
+  const e = state.examenes[i];
+  if (e.esPersonalizado) {
+    // Open personalizado screen with preselected questions
+    state.editandoExamenId = e.id;
+    state.idiomaPersonalizado = e.idioma || 'es';
+    seleccionPersonalizada = new Set(e.poolIds || []);
+    showScreen('admin-examen-personalizado');
+    // Fill form fields
+    setTimeout(() => {
+      document.getElementById('ep-nombre').value = e.nombre || '';
+      document.getElementById('ep-minimo').value = e.minimo || 70;
+      document.getElementById('ep-tiempo').value = e.tiempoMin || '';
+      document.getElementById('ep-qty').value = e.qty || 20;
+      // Update language buttons
+      if (e.idioma === 'en') {
+        document.getElementById('ep-btn-en').classList.add('btn-primary');
+        document.getElementById('ep-btn-es').classList.remove('btn-primary');
+      } else {
+        document.getElementById('ep-btn-es').classList.add('btn-primary');
+        document.getElementById('ep-btn-en').classList.remove('btn-primary');
+      }
+      renderBancoPersonalizado();
+      actualizarContadorPersonalizado();
+      const titleEl = document.getElementById('ep-title');
+      if (titleEl) titleEl.textContent = 'Editar examen personalizado';
+      const saveBtn = document.getElementById('ep-save-btn');
+      if (saveBtn) saveBtn.textContent = 'Guardar cambios';
+    }, 100);
+  } else {
+    // For random exams, show a prompt-based quick edit
+    const nombre = prompt('Nombre del examen:', e.nombre);
+    if (nombre === null) return;
+    const qty = prompt('Cantidad de preguntas:', e.qty);
+    if (qty === null) return;
+    const minimo = prompt('Mínimo para aprobar (%):', e.minimo);
+    if (minimo === null) return;
+    const tiempo = prompt('Tiempo límite en minutos (0 = sin límite):', e.tiempoMin || 0);
+    if (tiempo === null) return;
+    const regla = prompt('Filtro de reglas (vacío = todas, o separadas por coma):', e.reglaFiltro || '');
+    if (regla === null) return;
+    
+    e.nombre = nombre.trim() || e.nombre;
+    e.qty = parseInt(qty) || e.qty;
+    e.minimo = parseInt(minimo) || e.minimo;
+    e.tiempoMin = parseInt(tiempo) || 0;
+    e.reglaFiltro = regla.trim();
+    
+    // Recalculate pool if regla changed
+    if (regla.trim() && !e.esPersonalizado) {
+      const reglas = regla.trim().split(',').map(r=>r.trim());
+      const pool = state.preguntas.filter(p=>reglas.includes(p.regla));
+      e.poolIds = pool.map(p=>p.id);
+    }
+    
+    sheetsPost({tipo:'guardar_examen', examen: e}).then(() => {
+      renderListaExamenes();
+      alert('Examen actualizado ✓');
+    });
+  }
 }
 
 // ── Árbitro: cargar exámenes ─────────────────────────────
@@ -952,6 +1021,7 @@ function setIdiomaPersonalizado(idioma) {
 }
 
 function abrirExamenPersonalizado() {
+  state.editandoExamenId = null;
   seleccionPersonalizada = new Set();
   state.reglasAbiertas = new Set();
   state.idiomaPersonalizado = 'es';
@@ -977,7 +1047,8 @@ async function guardarExamenPersonalizado() {
   const poolIds = Array.from(seleccionPersonalizada);
   if (qty > poolIds.length) { msg.textContent=`El sub-banco tiene ${poolIds.length} preguntas. No podés pedir más.`; msg.className='msg-err'; return; }
   msg.textContent='Guardando...'; msg.className='msg-info';
-  const examen = { id:Date.now(), nombre, qty, minimo, activo:true, reglaFiltro:'personalizado', tiempoMin, poolIds, esPersonalizado:true, idioma: state.idiomaPersonalizado||'es' };
+  const isEdit = !!state.editandoExamenId;
+  const examen = { id: isEdit ? state.editandoExamenId : Date.now(), nombre, qty, minimo, activo:true, reglaFiltro:'personalizado', tiempoMin, poolIds, esPersonalizado:true, idioma: state.idiomaPersonalizado||'es' };
   state.examenes.push(examen);
   await sheetsPost({tipo:'guardar_examen', examen});
   msg.textContent='Examen creado ✓'; msg.className='msg-ok';

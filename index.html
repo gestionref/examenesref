@@ -1323,6 +1323,24 @@ function tiempoEmpleadoTexto() {
   if (codigo) cargarCorreccion(codigo);
 })();
 
+// Identidad recibida desde gestion-arbitral-fecobal (acceso embebido por iframe)
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const nombreParam = params.get('nombre');
+  if (!nombreParam) return;
+  window.arbIdEmbebido = params.get('arb_id') || '';
+  window.asociacionEmbebida = params.get('asociacion') || '';
+  const input = document.getElementById('arbitro-nombre-global');
+  if (input) {
+    input.value = nombreParam;
+    input.readOnly = true;
+    input.style.background = 'var(--bg)';
+    input.style.cursor = 'not-allowed';
+    input.title = 'Identidad verificada desde tu perfil de árbitro';
+  }
+  showScreen('arbitro-login');
+})();
+
 // ── REPORTES DE PREGUNTAS ─────────────────────────────────
 function getReportes() {
   try { return JSON.parse(localStorage.getItem('fecobal_reportes') || '[]'); }
